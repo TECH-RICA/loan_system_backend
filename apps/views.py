@@ -45,7 +45,7 @@ class LoginView(views.APIView):
                 admin.failed_login_attempts = 0
                 admin.save()
 
-                refresh = RefreshToken()
+                refresh = RefreshToken.for_user(admin)
                 refresh["admin_id"] = str(admin.id)
                 refresh["role"] = admin.role
 
