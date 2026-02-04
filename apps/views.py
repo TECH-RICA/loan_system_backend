@@ -45,12 +45,7 @@ class LoginView(views.APIView):
                 admin.failed_login_attempts = 0
                 admin.save()
 
-                # Get the shadow Django User for JWT
-                from django.contrib.auth.models import User
-
-                user_obj = User.objects.get(username=admin.email)
-
-                refresh = RefreshToken.for_user(user_obj)
+                refresh = RefreshToken()
                 refresh["admin_id"] = str(admin.id)
                 refresh["role"] = admin.role
 
