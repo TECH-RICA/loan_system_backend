@@ -29,9 +29,6 @@ class LoginView(views.APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # Debug: Print what we received to the console
-        print(f"DEBUG: Received data: {request.data}")
-
         email = request.data.get("email")
         password = request.data.get("password")
 
@@ -43,9 +40,8 @@ class LoginView(views.APIView):
                 content_data = json.loads(request.data.get("_content"))
                 email = content_data.get("email")
                 password = content_data.get("password")
-                print(f"DEBUG: Unwrapped from _content: email={email}")
-            except Exception as e:
-                print(f"DEBUG: Failed to unwrap _content: {e}")
+            except Exception:
+                pass
 
         # Sometimes Browsable API sends data in a nested QueryDict
         if not email and isinstance(request.data, dict) and "email" in request.data:
@@ -59,9 +55,7 @@ class LoginView(views.APIView):
 
         if not email or not password:
             return Response(
-                {
-                    "error": f"Email ({email}) and password (hidden) are required. Received keys: {list(request.data.keys())}"
-                },
+                {"error": "Email and password are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
