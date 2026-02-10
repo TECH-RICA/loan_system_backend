@@ -105,4 +105,10 @@ const pool = new Pool({
     "postgresql://loan_sytem_db_user:QqPUj19561h5nMkUFuGRwwkyzAdamUnI@dpg-d61eo14r85hc7399gmu0-a.oregon-postgres.render.com/loan_sytem_db",
   ssl: { rejectUnauthorized: false }, // Required for Render connections
 });
+
+
+
+
+
+"Hey, look at the file TECH_SPEC_SUMMARY.md and INTEGRATION_GUIDE.md. They describe the API we built earlier. My team is having an issue with [describe the issue]—can you help?"
 ```

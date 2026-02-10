@@ -1,0 +1,29 @@
+                  List of relations
+ Schema |            Name            | Type  | Owner 
+--------+----------------------------+-------+-------
+ public | admins                     | table | pope
+ public | audit_logs                 | table | pope
+ public | auth_group                 | table | pope
+ public | auth_group_permissions     | table | pope
+ public | auth_permission            | table | pope
+ public | auth_user                  | table | pope
+ public | auth_user_groups           | table | pope
+ public | auth_user_user_permissions | table | pope
+ public | django_admin_log           | table | pope
+ public | django_content_type        | table | pope
+ public | django_migrations          | table | pope
+ public | django_session             | table | pope
+ public | loan_products              | table | pope
+ public | loans                      | table | pope
+ public | mpesa_payments             | table | pope
+ public | notifications              | table | pope
+ public | repayment_schedule         | table | pope
+ public | repayments                 | table | pope
+ public | reports                    | table | pope
+ public | staff_assignments          | table | pope
+ public | system_settings            | table | pope
+ public | transactions               | table | pope
+ public | user_profiles              | table | pope
+ public | users                      | table | pope
+(24 rows)
+

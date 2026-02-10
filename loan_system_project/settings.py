@@ -91,11 +91,11 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("apps.authentication.CustomJWTAuthentication",),
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
@@ -108,3 +108,14 @@ SIMPLE_JWT = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Brevo Email Configuration
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp-relay.brevo.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv("FROM_EMAIL")
+EMAIL_HOST_PASSWORD = os.getenv("BREVO_API_KEY")
+DEFAULT_FROM_EMAIL = os.getenv("FROM_EMAIL")
+EMAIL_TIMEOUT = 10  # 10 second timeout for email
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")

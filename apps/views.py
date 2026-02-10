@@ -1,5 +1,11 @@
 import bcrypt
 import uuid
+import secrets
+import threading
+import os
+import requests
+from django.core.mail import send_mail
+from django.conf import settings
 from rest_framework import status, views, permissions, generics
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -12,6 +18,10 @@ from .models import (
     Transactions,
     Notifications,
     AuditLogs,
+    UserProfiles,
+    SystemSettings,
+    LoanActivity,
+    LoanDocuments,
 )
 from .serializers import (
     AdminSerializer,
@@ -22,7 +32,94 @@ from .serializers import (
     TransactionSerializer,
     NotificationSerializer,
     AuditLogSerializer,
+    UserProfileSerializer,
+    SystemSettingsSerializer,
+    LoanActivitySerializer,
+    LoanDocumentSerializer,
 )
+
+
+def create_loan_activity(loan, admin, action, note=""):
+    LoanActivity.objects.create(loan=loan, admin=admin, action=action, note=note)
+
+
+def create_notification(user, message):
+    Notifications.objects.create(user=user, message=message, is_read=False)
+
+
+def send_verification_email_async(full_name, email, verification_code):
+    try:
+        sender_name = os.getenv("SENDER_NAME", "Loan System")
+        from_email = os.getenv("FROM_EMAIL")
+        brevo_api_key = os.getenv("BREVO_API_KEY")
+
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "accept": "application/json",
+            "api-key": brevo_api_key,
+            "content-type": "application/json",
+        }
+
+        payload = {
+            "sender": {"name": sender_name, "email": from_email},
+            "to": [{"email": email}],
+            "subject": "Your Email Verification Code - Loan System",
+            "htmlContent": f"""
+                <html>
+                <body style="font-family: Arial, sans-serif;">
+                <h2>Email Verification</h2>
+                <p>Hello {full_name},</p>
+                <p>Welcome to the Loan Management System!</p>
+                <p>Your verification code is:</p>
+                <h1 style="background-color: #f0f0f0; padding: 10px; text-align: center; letter-spacing: 5px;">{verification_code}</h1>
+                <p>This code will expire in 24 hours.</p>
+                <p>If you didn't register for this account, please ignore this email.</p>
+                <p>Best regards,<br/>{sender_name} Team</p>
+                </body>
+                </html>
+            """,
+        }
+
+        requests.post(url, json=payload, headers=headers)
+
+    except Exception:
+        pass
+
+
+def send_password_reset_email_async(full_name, email, reset_code):
+    try:
+        sender_name = os.getenv("SENDER_NAME", "Loan System")
+        from_email = os.getenv("FROM_EMAIL")
+        brevo_api_key = os.getenv("BREVO_API_KEY")
+
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "accept": "application/json",
+            "api-key": brevo_api_key,
+            "content-type": "application/json",
+        }
+
+        payload = {
+            "sender": {"name": sender_name, "email": from_email},
+            "to": [{"email": email}],
+            "subject": "Password Reset Code - Loan System",
+            "htmlContent": f"""
+                <html>
+                <body style="font-family: Arial, sans-serif;">
+                <h2>Password Reset</h2>
+                <p>Hello {full_name},</p>
+                <p>You requested to reset your password.</p>
+                <p>Your 6-digit reset code is:</p>
+                <h1 style="background-color: #f8f8f8; padding: 15px; text-align: center; letter-spacing: 5px; border: 1px solid #ddd;">{reset_code}</h1>
+                <p>This code will expire in 1 hour.</p>
+                <p>If you didn't request this, please ignore this email and ensure your account is secure.</p>
+                </body>
+                </html>
+            """,
+        }
+        requests.post(url, json=payload, headers=headers)
+    except Exception:
+        pass
 
 
 class LoginView(views.APIView):
@@ -32,7 +129,6 @@ class LoginView(views.APIView):
         email = request.data.get("email")
         password = request.data.get("password")
 
-        # Handle Render/DRF Browsable API "content" wrapper
         if not email and "_content" in request.data:
             try:
                 import json
@@ -43,7 +139,6 @@ class LoginView(views.APIView):
             except Exception:
                 pass
 
-        # Sometimes Browsable API sends data in a nested QueryDict
         if not email and isinstance(request.data, dict) and "email" in request.data:
             email = request.data.get("email")
         if (
@@ -60,7 +155,6 @@ class LoginView(views.APIView):
             )
 
         try:
-            # Case-insensitive lookup
             admin = Admins.objects.filter(email__iexact=email).first()
             if not admin:
                 return Response(
@@ -73,6 +167,14 @@ class LoginView(views.APIView):
                     {"error": "Account is blocked"}, status=status.HTTP_403_FORBIDDEN
                 )
 
+            if not admin.is_verified:
+                return Response(
+                    {
+                        "error": "Please verify your email before logging in. Check your inbox for the verification link."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
             if bcrypt.checkpw(
                 password.encode("utf-8"), admin.password_hash.encode("utf-8")
             ):
@@ -81,6 +183,7 @@ class LoginView(views.APIView):
 
                 try:
                     refresh = RefreshToken()
+                    refresh["user_id"] = str(admin.id)
                     refresh["admin_id"] = str(admin.id)
                     refresh["role"] = admin.role
 
@@ -116,45 +219,575 @@ class LoginView(views.APIView):
 
 
 class UserListCreateView(generics.ListCreateAPIView):
-    queryset = Users.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if not user or not user.is_authenticated:
+            return Users.objects.none()
+
+        if hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            return Users.objects.filter(created_by=user)
+
+        if hasattr(user, "role") and user.role == "MANAGER":
+            return Users.objects.filter(profile__region=user.region)
+
+        return Users.objects.all()
 
     def perform_create(self, serializer):
-        serializer.save(id=uuid.uuid4())
+        user = self.request.user
+
+        created_by = user if (user and user.is_authenticated) else None
+        serializer.save(created_by=created_by)
+
+
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Users.objects.none()
+
+        if hasattr(user, "role") and user.role == "MANAGER":
+            return Users.objects.filter(profile__region=user.region)
+        elif hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            return Users.objects.filter(created_by=user)
+
+        return Users.objects.all()
+
+
+class CheckUserView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        query = request.query_params.get("q")
+        if not query:
+            return Response(
+                {"error": "Query parameter 'q' (ID or Phone) is required"},
+                status=400,
+            )
+
+        user = (
+            Users.objects.filter(phone=query).first()
+            or Users.objects.filter(profile__national_id=query).first()
+        )
+
+        if not user:
+            return Response({"found": False})
+
+        outstanding_loan = Loans.objects.filter(
+            user=user,
+            status__in=[
+                "UNVERIFIED",
+                "VERIFIED",
+                "PENDING",
+                "AWARDED",
+                "ACTIVE",
+                "OVERDUE",
+            ],
+        ).last()
+
+        return Response(
+            {
+                "found": True,
+                "user": UserSerializer(user).data,
+                "has_outstanding_loan": outstanding_loan is not None,
+                "outstanding_loan": (
+                    LoanSerializer(outstanding_loan).data if outstanding_loan else None
+                ),
+            }
+        )
 
 
 class LoanListCreateView(generics.ListCreateAPIView):
-    queryset = Loans.objects.all()
     serializer_class = LoanSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Loans.objects.none()
+
+        loans = Loans.objects.all()
+
+        if hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            loans = loans.filter(created_by=user)
+
+        elif hasattr(user, "role") and user.role == "MANAGER":
+            loans = loans.filter(user__profile__region=user.region)
+
+        for loan in loans:
+            loan.update_status_and_rates()
+
+        return loans
 
     def perform_create(self, serializer):
-        serializer.save(id=uuid.uuid4())
+        user = self.request.user
+        created_by = user if (user and user.is_authenticated) else None
 
+        interest_rate = self.request.data.get("interest_rate")
+        product_id = self.request.data.get("loan_product")
 
-class LoanProductListCreateView(generics.ListCreateAPIView):
-    queryset = LoanProducts.objects.all()
-    serializer_class = LoanProductSerializer
+        if not interest_rate:
+            if product_id:
+                try:
+                    product = LoanProducts.objects.get(id=product_id)
+                    interest_rate = product.interest_rate
+                except LoanProducts.DoesNotExist:
+                    pass
 
-    def perform_create(self, serializer):
-        serializer.save(id=uuid.uuid4())
+            if not interest_rate:
+                try:
+                    interest_setting = SystemSettings.objects.get(
+                        key="DEFAULT_INTEREST_RATE"
+                    )
+                    interest_rate = interest_setting.value
+                except SystemSettings.DoesNotExist:
+                    interest_rate = 5.0
+
+        loan = serializer.save(interest_rate=interest_rate, created_by=created_by)
+
+        create_loan_activity(
+            loan,
+            created_by,
+            "APPLIED",
+            f"Loan applied for KES {loan.principal_amount}",
+        )
+
+        create_notification(
+            loan.user,
+            f"Your loan application of KES {loan.principal_amount} has been received and is under review.",
+        )
 
 
 class RepaymentListCreateView(generics.ListCreateAPIView):
-    queryset = Repayments.objects.all()
     serializer_class = RepaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Repayments.objects.none()
+
+        repayments = Repayments.objects.all()
+
+        if hasattr(user, "role") and user.role == "MANAGER":
+            repayments = repayments.filter(loan__user__profile__region=user.region)
+
+        elif hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            repayments = repayments.filter(loan__created_by=user)
+
+        return repayments.order_by("-payment_date")
 
     def perform_create(self, serializer):
         serializer.save(id=uuid.uuid4())
 
 
 class AuditLogListView(generics.ListAPIView):
-    queryset = AuditLogs.objects.all()
     serializer_class = AuditLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user_role = self.request.auth.get("role") if self.request.auth else None
+
+        if not user_role and hasattr(self.request.user, "role"):
+            user_role = self.request.user.role
+
+        if user_role == "ADMIN":
+            return AuditLogs.objects.all().order_by("-created_at")
+        return AuditLogs.objects.none()
 
 
 class AdminListCreateView(generics.ListCreateAPIView):
-    queryset = Admins.objects.all()
     serializer_class = AdminSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = Admins.objects.all()
+        role = self.request.query_params.get("role")
+        if role:
+            queryset = queryset.filter(role=role)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(id=uuid.uuid4())
+
+
+class AdminDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Admins.objects.all()
+    serializer_class = AdminSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class SystemSettingsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        settings = SystemSettings.objects.all()
+        serializer = SystemSettingsSerializer(settings, many=True)
+        data = {s["key"]: s["value"] for s in serializer.data}
+        return Response(data)
+
+    def post(self, request):
+        for key, value in request.data.items():
+            SystemSettings.objects.update_or_create(key=key, defaults={"value": value})
+        return Response({"message": "Settings updated successfully"})
+
+
+class AdminDeleteView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, admin_id):
+        try:
+            if request.auth.get("role") != "ADMIN":
+                return Response(
+                    {"error": "Only admins can delete accounts"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if str(request.auth.get("admin_id")) == str(admin_id):
+                return Response(
+                    {"error": "Cannot delete your own account"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            admin = Admins.objects.get(id=admin_id)
+            admin_email = admin.email
+            admin.delete()
+
+            return Response(
+                {"message": f"Admin account ({admin_email}) deleted successfully"},
+                status=status.HTTP_200_OK,
+            )
+        except Admins.DoesNotExist:
+            return Response(
+                {"error": "Admin not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class RegisterAdminView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        full_name = request.data.get("full_name")
+        email = request.data.get("email")
+        phone = request.data.get("phone")
+        role = request.data.get("role")
+        password = request.data.get("password")
+
+        if not all([full_name, email, role, password]):
+            return Response(
+                {"error": "full_name, email, role, and password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valid_roles = ["ADMIN", "MANAGER", "FINANCIAL_OFFICER", "FIELD_OFFICER"]
+        if role not in valid_roles:
+            return Response(
+                {"error": f"Role must be one of: {', '.join(valid_roles)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if Admins.objects.filter(email__iexact=email).exists():
+            return Response(
+                {"error": "Email already registered"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verification_code = str(secrets.randbelow(900000) + 100000)
+
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        admin = Admins.objects.create(
+            id=uuid.uuid4(),
+            full_name=full_name,
+            email=email.lower(),
+            phone=phone,
+            role=role,
+            password_hash=password_hash,
+            verification_token=verification_code,
+            is_verified=False,
+        )
+
+        email_thread = threading.Thread(
+            target=send_verification_email_async,
+            args=(full_name, email.lower(), verification_code),
+        )
+        email_thread.daemon = True
+        email_thread.start()
+
+        return Response(
+            {
+                "message": f"Registration successful! Please check your email ({email}) for the verification code.",
+                "email": email.lower(),
+                "admin": AdminSerializer(admin).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        code = request.data.get("code")
+
+        if not email or not code:
+            return Response(
+                {"error": "Email and verification code are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            admin = Admins.objects.get(email__iexact=email)
+
+            if admin.is_verified:
+                return Response(
+                    {"message": "Email already verified"},
+                    status=status.HTTP_200_OK,
+                )
+
+            if admin.verification_token != code:
+                return Response(
+                    {"error": "Invalid verification code"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            admin.is_verified = True
+            admin.verification_token = None
+            admin.save()
+
+            return Response(
+                {
+                    "message": "Email verified successfully. You can now login.",
+                    "admin": AdminSerializer(admin).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Admins.DoesNotExist:
+            return Response(
+                {"error": "Email not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class RequestPasswordResetView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return Response({"error": "Email is required"}, status=400)
+
+        try:
+            admin = Admins.objects.get(email__iexact=email)
+            reset_code = str(secrets.randbelow(900000) + 100000)
+            admin.password_reset_code = reset_code
+            admin.password_reset_expires = timezone.now() + timezone.timedelta(hours=1)
+            admin.save()
+
+            threading.Thread(
+                target=send_password_reset_email_async,
+                args=(admin.full_name, admin.email, reset_code),
+            ).start()
+
+            return Response(
+                {"message": "Reset code sent to your email. Check your inbox."}
+            )
+        except Admins.DoesNotExist:
+            return Response(
+                {
+                    "message": "If this email is registered, you will receive a reset code."
+                }
+            )
+
+
+class ConfirmPasswordResetView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        code = request.data.get("code")
+        new_password = request.data.get("password")
+        confirm_password = request.data.get("confirm_password")
+
+        if not all([email, code, new_password, confirm_password]):
+            return Response({"error": "All fields are required"}, status=400)
+
+        if new_password != confirm_password:
+            return Response({"error": "Passwords do not match"}, status=400)
+
+        try:
+            admin = Admins.objects.get(
+                email__iexact=email,
+                password_reset_code=code,
+                password_reset_expires__gt=timezone.now(),
+            )
+
+            password_hash = bcrypt.hashpw(
+                new_password.encode("utf-8"), bcrypt.gensalt()
+            ).decode("utf-8")
+
+            admin.password_hash = password_hash
+            admin.password_reset_code = None
+            admin.password_reset_expires = None
+            admin.save()
+
+            return Response(
+                {"message": "Password reset successfully. You can now login."}
+            )
+        except Admins.DoesNotExist:
+            return Response({"error": "Invalid or expired reset code"}, status=400)
+
+
+class LoanProductListCreateView(generics.ListCreateAPIView):
+    queryset = LoanProducts.objects.all()
+    serializer_class = LoanProductSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class UserProfileListCreateView(generics.ListCreateAPIView):
+    queryset = UserProfiles.objects.all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class LoanDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = LoanSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Loans.objects.none()
+
+        if hasattr(user, "role") and user.role == "MANAGER":
+            return Loans.objects.filter(user__profile__region=user.region)
+        elif hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            return Loans.objects.filter(created_by=user)
+
+        return Loans.objects.all()
+
+    def perform_update(self, serializer):
+        old_loan = self.get_object()
+        new_status = self.request.data.get("status")
+
+        loan = serializer.save()
+
+        if new_status and new_status != old_loan.status:
+            admin = self.request.user if self.request.user.is_authenticated else None
+            create_loan_activity(
+                loan,
+                admin,
+                new_status,
+                f"Status changed from {old_loan.status} to {new_status}",
+            )
+
+            create_notification(
+                loan.user,
+                f"Your loan status has been updated to {new_status}.",
+            )
+
+
+class LoanDocumentCreateView(generics.CreateAPIView):
+    serializer_class = LoanDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        loan_id = self.request.data.get("loan")
+        user = self.request.user
+
+        loan = Loans.objects.get(id=loan_id)
+        if hasattr(user, "role"):
+            if user.role == "MANAGER" and loan.user.profile.region != user.region:
+                raise permissions.exceptions.PermissionDenied(
+                    "You don't have access to this loan's region"
+                )
+            if user.role == "FIELD_OFFICER" and loan.created_by != user:
+                raise permissions.exceptions.PermissionDenied(
+                    "You didn't create this loan application"
+                )
+
+        doc = serializer.save()
+
+        create_loan_activity(
+            loan,
+            self.request.user,
+            "DOCUMENT_UPLOADED",
+            f"Uploaded {doc.doc_type or 'DOC'}: {doc.name}",
+        )
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notifications.objects.filter(user=self.request.user).order_by(
+            "-created_at"
+        )
+
+
+class NotificationUpdateView(generics.UpdateAPIView):
+    queryset = Notifications.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class LoanAnalyticsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count, Sum
+        from django.db.models.functions import TruncMonth
+
+        user = request.user
+        region = request.query_params.get("region")
+
+        if hasattr(user, "role") and user.role == "MANAGER":
+            region = user.region
+
+        loans = Loans.objects.all()
+        if region:
+            loans = loans.filter(user__profile__region=region)
+
+        if hasattr(user, "role") and user.role == "FIELD_OFFICER":
+            loans = loans.filter(created_by=user)
+
+        monthly_stats = (
+            loans.annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(total=Sum("principal_amount"), count=Count("id"))
+            .order_by("month")
+        )
+
+        status_stats = loans.values("status").annotate(count=Count("id"))
+
+        data = {
+            "monthly_disbursements": [
+                {
+                    "month": stat["month"].strftime("%b"),
+                    "amount": float(stat["total"] or 0),
+                    "count": stat["count"],
+                }
+                for stat in monthly_stats
+            ],
+            "status_breakdown": [
+                {"name": stat["status"], "value": stat["count"]}
+                for stat in status_stats
+            ],
+        }
+        return Response(data)
