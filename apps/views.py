@@ -498,6 +498,14 @@ class RegisterAdminView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if role == "ADMIN" and Admins.objects.filter(role="ADMIN").exists():
+            return Response(
+                {
+                    "error": "Admin account already exists. New admins must be invited by an existing administrator."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if Admins.objects.filter(email__iexact=email).exists():
             return Response(
                 {"error": "Email already registered"},
