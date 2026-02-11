@@ -14,12 +14,13 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { X } from 'lucide-react';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
 
   const adminLinks = [
@@ -50,28 +51,49 @@ const Sidebar = () => {
                 fieldLinks;
 
   return (
-    <aside className="w-64 h-screen bg-white border-r border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex flex-col fixed left-0 top-0">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">MicroLoan</h1>
-      </div>
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
+          onClick={onClose}
+        />
+      )}
 
-      <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-        {links.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            className={({ isActive }) => cn(
-              "flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors",
-              isActive 
-                ? "bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400" 
-                : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-            )}
+      <aside className={cn(
+        "w-64 h-screen bg-white border-r border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 lg:translate-x-0",
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="p-6 flex items-center justify-between">
+          <h1 className="text-2xl font-black text-primary-600 dark:text-primary-400 tracking-tight">MicroLoan</h1>
+          <button 
+            onClick={onClose}
+            className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
           >
-            <link.icon className="w-5 h-5 mr-3" />
-            {link.label}
-          </NavLink>
-        ))}
-      </nav>
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+          {links.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              onClick={() => {
+                if (window.innerWidth < 1024) onClose();
+              }}
+              className={({ isActive }) => cn(
+                "flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors",
+                isActive 
+                  ? "bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400" 
+                  : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+              )}
+            >
+              <link.icon className="w-5 h-5 mr-3" />
+              {link.label}
+            </NavLink>
+          ))}
+        </nav>
 
       <div className="p-4 border-t border-slate-200 dark:border-slate-800">
         <button
@@ -83,6 +105,7 @@ const Sidebar = () => {
         </button>
       </div>
     </aside>
+  </>
   );
 };
 

@@ -62,7 +62,7 @@ export const Table = ({ headers, data, renderRow, className }) => (
 /**
  * Stat Card
  */
-export const StatCard = ({ label, value, icon: Icon, trend, trendValue, variant = 'primary' }) => {
+export const StatCard = ({ label, value, icon: Icon, trend, trendValue, variant = 'primary', onClick }) => {
   const iconVariants = {
     primary: "bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400",
     success: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
@@ -72,18 +72,24 @@ export const StatCard = ({ label, value, icon: Icon, trend, trendValue, variant 
   };
 
   return (
-    <Card className="flex items-start justify-between">
-      <div>
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
-        <h3 className="text-2xl font-bold mt-1 text-slate-800 dark:text-white">{value}</h3>
+    <Card 
+      className={cn(
+        "flex items-start justify-between p-4 md:p-6 transition-transform hover:scale-[1.02] active:scale-[0.98]",
+        onClick && "cursor-pointer"
+      )}
+      onClick={onClick}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400 truncate">{label}</p>
+        <h3 className="text-lg md:text-2xl font-bold mt-1 text-slate-800 dark:text-white truncate">{value}</h3>
         {trend && (
-          <p className={cn("text-xs font-medium mt-2", trend === 'up' ? 'text-emerald-600' : 'text-rose-600')}>
+          <p className={cn("text-[10px] md:text-xs font-medium mt-2 flex items-center gap-1", trend === 'up' ? 'text-emerald-600' : 'text-rose-600')}>
             {trend === 'up' ? '↑' : '↓'} {trendValue}% <span className="text-slate-400">vs last month</span>
           </p>
         )}
       </div>
-      <div className={cn("p-3 rounded-lg", iconVariants[variant])}>
-        <Icon className="w-6 h-6" />
+      <div className={cn("p-2 md:p-3 rounded-lg shrink-0", iconVariants[variant])}>
+        <Icon className="w-5 h-5 md:w-6 h-6" />
       </div>
     </Card>
   );

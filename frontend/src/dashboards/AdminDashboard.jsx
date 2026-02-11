@@ -30,7 +30,7 @@ const AdminDashboard = () => {
   return (
     <Layout title={getTitle()}>
       <div className="space-y-6">
-        <nav className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
+        <nav className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
           {[
             { to: '/admin/dashboard', label: 'Overview' },
             { to: '/admin/managers', label: 'Managers' },
@@ -45,7 +45,7 @@ const AdminDashboard = () => {
               key={tab.to}
               to={tab.to}
               className={clsx(
-                "text-sm font-medium pb-2 border-b-2 transition-colors",
+                "text-sm font-medium pb-2 border-b-2 transition-colors whitespace-nowrap",
                 location.pathname === tab.to 
                   ? "border-primary-600 text-primary-600" 
                   : "border-transparent text-slate-500 hover:text-slate-700"

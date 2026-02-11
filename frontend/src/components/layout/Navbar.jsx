@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, LogOut, Settings, ChevronDown, CheckCheck } from 'lucide-react';
+import { Bell, Search, User, LogOut, Settings, ChevronDown, CheckCheck, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const Navbar = ({ title }) => {
+const Navbar = ({ title, onMenuClick }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
@@ -68,10 +68,20 @@ const Navbar = ({ title }) => {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-10">
-      <h2 className="text-xl font-semibold text-slate-800 dark:text-white">{title}</h2>
+    <header className="h-16 bg-white border-b border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 sticky top-0 z-10">
+      <div className="flex items-center gap-4">
+        <button 
+          onClick={onMenuClick}
+          className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+        >
+          <Menu className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+        </button>
+        <h2 className="text-lg md:text-xl font-semibold text-slate-800 dark:text-white truncate max-w-[150px] md:max-w-none">
+          {title}
+        </h2>
+      </div>
 
-      <div className="flex items-center space-x-6">
+      <div className="flex items-center space-x-2 md:space-x-6">
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -93,7 +103,7 @@ const Navbar = ({ title }) => {
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 transition-all">
+            <div className="absolute right-0 mt-2 w-72 md:w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 transition-all">
               <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                 <h4 className="font-bold text-sm">Notifications</h4>
                 <span className="text-[10px] bg-primary-100 text-primary-600 px-2 py-1 rounded-full font-bold">
