@@ -30,7 +30,7 @@ const FieldOfficerDashboard = () => {
 
       // Link customers to loans locally for display
       const customerMap = customersList.reduce((acc, c) => {
-        acc[c.id] = c.full_name;
+        acc[c.id] = { name: c.full_name, phone: c.phone };
         return acc;
       }, {});
 
@@ -38,7 +38,8 @@ const FieldOfficerDashboard = () => {
       setLoans(loansList.map((l) => ({
         ...l,
         amount: Number(l.principal_amount) || 0,
-        customer_name: customerMap[l.user] || 'Unknown'
+        customer_name: customerMap[l.user]?.name || 'Unknown',
+        user_phone: customerMap[l.user]?.phone || ''
       })));
 
       // Calculate simple trend stats

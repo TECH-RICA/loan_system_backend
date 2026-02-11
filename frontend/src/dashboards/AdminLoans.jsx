@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { loanService } from '../api/api';
 import { Card, Table, Button } from '../components/ui/Shared';
-import { Search, Filter, Download, Eye, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Search, Filter, Download, Eye, CheckCircle, XCircle, Clock, MessageSquareShare } from 'lucide-react';
+import BulkCustomerSMSModal from '../components/ui/BulkCustomerSMSModal';
 
 const AdminLoans = () => {
   const [loans, setLoans] = useState([]);
@@ -9,6 +10,8 @@ const AdminLoans = () => {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -69,6 +72,14 @@ const AdminLoans = () => {
           <p className="text-sm text-slate-500">Monitor and manage all loan applications across the system</p>
         </div>
         <div className="flex gap-2">
+           <Button 
+             variant="primary" 
+             className="bg-orange-600 hover:bg-orange-700 flex items-center gap-2 shadow-lg shadow-orange-500/20"
+             onClick={() => setIsBulkModalOpen(true)}
+           >
+              <MessageSquareShare className="w-4 h-4" /> 
+              Customer Comms
+           </Button>
            <Button variant="outline" className="flex items-center gap-2">
               <Download className="w-4 h-4" /> Export CSV
            </Button>
@@ -155,6 +166,11 @@ const AdminLoans = () => {
           </table>
         </div>
       </Card>
+
+      <BulkCustomerSMSModal 
+        isOpen={isBulkModalOpen} 
+        onClose={() => setIsBulkModalOpen(false)} 
+      />
     </div>
   );
 };

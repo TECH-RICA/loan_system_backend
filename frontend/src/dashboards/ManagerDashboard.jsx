@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Table, Button, Card, StatCard, Badge } from '../components/ui/Shared';
 import CustomerRegistrationForm from '../components/forms/CustomerRegistrationForm';
 import RepaymentModal from '../components/ui/RepaymentModal';
+import BulkCustomerSMSModal from '../components/ui/BulkCustomerSMSModal';
 import { 
   Users, 
   TrendingUp, 
@@ -27,7 +28,8 @@ import {
   FileText,
   Upload,
   BarChart3,
-  ExternalLink
+  ExternalLink,
+  MessageSquareShare
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -54,6 +56,7 @@ const ManagerDashboard = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [showRepaymentModal, setShowRepaymentModal] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [updating, setUpdating] = useState(false);
   const [chartData, setChartData] = useState([]);
@@ -525,11 +528,22 @@ const ManagerDashboard = () => {
       {/* Recent Loans */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
-           <h3 className="text-lg font-bold flex items-center gap-2">
+           <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
               <Activity className="w-5 h-5 text-orange-500" />
               Recent Loan Activity
            </h3>
-           <Button variant="secondary" size="sm">View All Loans</Button>
+           <div className="flex gap-2">
+             <Button 
+               variant="primary" 
+               size="sm" 
+               className="bg-orange-600 hover:bg-orange-700 flex items-center gap-2 shadow-lg shadow-orange-500/20"
+               onClick={() => setIsBulkModalOpen(true)}
+             >
+               <MessageSquareShare className="w-4 h-4" />
+               Customer Comms
+             </Button>
+             <Button variant="secondary" size="sm">View All Loans</Button>
+           </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -591,6 +605,18 @@ const ManagerDashboard = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
+                      {['ACTIVE', 'OVERDUE'].includes(loan.status) && (
+                        <Button 
+                          size="xs" 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => {
+                            setSelectedLoan(loan);
+                            setShowRepaymentModal(true);
+                          }}
+                        >
+                          Repay
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -853,6 +879,7 @@ const ManagerDashboard = () => {
           loan={{
             ...selectedLoan,
             customer_name: customers.find(c => c.id === selectedLoan.user)?.full_name || 'Customer',
+            user_phone: customers.find(c => c.id === selectedLoan.user)?.phone || '',
             amount: Number(selectedLoan.remaining_balance || selectedLoan.principal_amount) || 0
           }}
           onClose={() => setShowRepaymentModal(false)}
@@ -861,6 +888,13 @@ const ManagerDashboard = () => {
             setSelectedLoan(null);
             fetchData();
           }}
+        />
+      )}
+
+      {isBulkModalOpen && (
+        <BulkCustomerSMSModal 
+          isOpen={isBulkModalOpen} 
+          onClose={() => setIsBulkModalOpen(false)} 
         />
       )}
 

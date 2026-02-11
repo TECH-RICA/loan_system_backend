@@ -79,6 +79,10 @@ export const loanService = {
     const res = await api.post('/payments/mpesa/', data);
     return res.data;
   },
+  sendBulkDefaulterSMS: async () => {
+    const res = await api.post('/notifications/bulk-sms/');
+    return res.data;
+  },
   getAuditLogs: async () => {
     const res = await api.get('/audit-logs/');
     return res.data;
@@ -119,6 +123,10 @@ export const loanService = {
   },
   deleteAdmin: async (admin_id) => {
     const res = await api.delete(`/admins/${admin_id}/delete/`);
+    return res.data;
+  },
+  sendBulkSMS: async (type = 'DEFAULTERS', message = '') => {
+    const res = await api.post('/loans/bulk-sms-defaulters/', { type, message });
     return res.data;
   },
   api // Export raw axios instance for custom calls

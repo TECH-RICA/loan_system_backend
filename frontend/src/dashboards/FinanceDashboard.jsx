@@ -17,7 +17,7 @@ import {
   History,
   Send
 } from 'lucide-react';
-import BulkMessageModal from '../components/ui/BulkMessageModal';
+import BulkCustomerSMSModal from '../components/ui/BulkCustomerSMSModal';
 
 const FinanceDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -122,8 +122,8 @@ const FinanceDashboard = () => {
           <p className="text-sm text-slate-500 mt-1">Cash flow oversight and portfolio management</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => setIsModalOpen(true)} className="flex items-center gap-2">
-            <Send className="w-4 h-4" /> Debt Reminders
+          <Button variant="primary" onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700">
+            <Send className="w-4 h-4" /> Customer Comms
           </Button>
           <Button onClick={fetchData} variant="outline" className="flex items-center gap-2">
              <Activity className="w-4 h-4" /> Sync Data
@@ -320,7 +320,7 @@ const FinanceDashboard = () => {
         </Card>
       </div>
 
-      <BulkMessageModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <BulkCustomerSMSModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </div>
   );
 };

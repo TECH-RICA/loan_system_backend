@@ -38,6 +38,7 @@ from .serializers import (
     LoanDocumentSerializer,
 )
 from .utils.mpesa import MpesaHandler
+from .utils.sms import send_sms_async
 
 
 def create_loan_activity(loan, admin, action, note=""):
@@ -478,6 +479,110 @@ class MpesaRepaymentView(views.APIView):
             )
 
 
+class BulkSMSView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user_role = getattr(user, "role", None)
+        # Restricted to Admins, Managers, and Financial Officers
+        if user_role not in ["ADMIN", "MANAGER", "FINANCIAL_OFFICER"]:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        sms_type = request.data.get("type", "DEFAULTERS")  # DEFAULTERS, REPAID, NOTICE
+        custom_message = request.data.get("message")
+
+        count = 0
+
+        if sms_type == "DEFAULTERS":
+            overdue_loans = Loans.objects.filter(status="OVERDUE")
+
+            # Scope to manager region or financial officer portfolio if applicable
+            if user_role == "MANAGER":
+                manager_region = getattr(user, "region", None)
+                if manager_region:
+                    overdue_loans = overdue_loans.filter(
+                        user__profile__region=manager_region
+                    )
+            # Finance might see all, so no extra filter for them usually
+
+            if not overdue_loans.exists():
+                return Response({"message": "No overdue loans found to notify."})
+
+            for loan in overdue_loans:
+                phone = loan.user.phone
+                if phone:
+                    principal = float(loan.principal_amount)
+                    total = float(loan.total_repayable_amount)
+                    accumulated_interest = total - principal
+                    remaining = float(loan.remaining_balance)
+
+                    msg = (
+                        f"Hello {loan.user.full_name}, your loan of KES {principal:,.2f} is OVERDUE. "
+                        f"Interest accumulated: KES {accumulated_interest:,.2f}. "
+                        f"Remaining balance: KES {remaining:,.2f}. Please pay via Paybill to avoid further penalties."
+                    )
+                    send_sms_async([phone], msg)
+                    count += 1
+                    create_notification(loan.user, f"Defaulter SMS sent to {phone}.")
+
+        elif sms_type == "REPAID":
+            # Encourage repeat loans for those who fully repaid
+            closed_loans = Loans.objects.filter(status="CLOSED")
+            if user_role == "MANAGER":
+                manager_region = getattr(user, "region", None)
+                if manager_region:
+                    closed_loans = closed_loans.filter(
+                        user__profile__region=manager_region
+                    )
+
+            # Get unique users with closed loans who don't have active ones
+            users_to_notify = {}
+            for loan in closed_loans:
+                if loan.user.id not in users_to_notify:
+                    # Check if they have any active/pending loan
+                    has_active = Loans.objects.filter(
+                        user=loan.user,
+                        status__in=["ACTIVE", "OVERDUE", "PENDING", "VERIFIED"],
+                    ).exists()
+                    if not has_active:
+                        users_to_notify[loan.user.id] = loan.user
+
+            for user_obj in users_to_notify.values():
+                if user_obj.phone:
+                    msg = (
+                        f"Hello {user_obj.full_name}, thank you for your commitment to repaying your previous loan. "
+                        "You are now eligible to apply for a newer, larger loan. Visit our nearest office or apply online today!"
+                    )
+                    send_sms_async([user_obj.phone], msg)
+                    count += 1
+
+        elif sms_type == "NOTICE":
+            if not custom_message:
+                return Response(
+                    {"error": "Message is required for general notice"}, status=400
+                )
+
+            # Send to all verified customers
+            all_users = Users.objects.filter(is_verified=True)
+            if user_role == "MANAGER":
+                manager_region = getattr(user, "region", None)
+                if manager_region:
+                    all_users = all_users.filter(profile__region=manager_region)
+
+            for u in all_users:
+                if u.phone:
+                    send_sms_async([u.phone], custom_message)
+                    count += 1
+
+        return Response(
+            {
+                "status": "success",
+                "message": f"Bulk SMS sequence started for {count} recipients ({sms_type}).",
+            }
+        )
+
+
 class AuditLogListView(generics.ListAPIView):
     serializer_class = AuditLogSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -799,6 +904,21 @@ class LoanDetailView(generics.RetrieveUpdateDestroyAPIView):
                 loan.user,
                 f"Your loan status has been updated to {new_status}.",
             )
+
+            # SMS Notifications for specific status changes
+            if new_status == "VERIFIED" and loan.user.phone:
+                msg = (
+                    f"Hello {loan.user.full_name}, your loan application for KES {loan.principal_amount:,.2f} "
+                    "has been VERIFIED. It is now moving to the approval stage."
+                )
+                send_sms_async([loan.user.phone], msg)
+
+            elif new_status == "AWARDED" and loan.user.phone:
+                msg = (
+                    f"Congratulations {loan.user.full_name}! Your loan of KES {loan.principal_amount:,.2f} "
+                    "has been AWARDED. The funds will be disbursed to your registered mobile number shortly."
+                )
+                send_sms_async([loan.user.phone], msg)
 
 
 class LoanDocumentCreateView(generics.CreateAPIView):
